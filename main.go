@@ -2,26 +2,19 @@ package main
 
 import (
 	"distributed-cache/cache"
-	"log"
-	"net"
-	"time"
+	"flag"
 )
 
 func main() {
+	listenaddr := flag.String("listenaddr", ":3000", "listen address of server")
+	leaderaddr := flag.String("leaderaddr", "", "the listen address of the leader")
+	flag.Parse()
+
 	opts := ServerOpts{
-		ListenAddr: ":3000",
-		IsLeader:   true,
+		ListenAddr: *listenaddr,
+		IsLeader:   len(*leaderaddr) == 0,
+		LeaderAddr: *leaderaddr,
 	}
-
-	go func() {
-		time.Sleep(time.Second * 2)
-		conn, err := net.Dial("tcp", ":3000")
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		conn.Write([]byte("SET Foo Bar 3400"))
-	}()
 
 	server := NewServer(opts, cache.New())
 	server.Start()
