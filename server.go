@@ -22,8 +22,8 @@ type Server struct {
 	ServerOpts
 
 	followers map[net.Conn]struct{}
-
-	cache cache.Cacher
+	clients   map[net.Conn]struct{}
+	cache     cache.Cacher
 }
 
 func NewServer(opts ServerOpts, c cache.Cacher) *Server {
@@ -31,6 +31,7 @@ func NewServer(opts ServerOpts, c cache.Cacher) *Server {
 		ServerOpts: opts,
 		cache:      c,
 		followers:  make(map[net.Conn]struct{}),
+		clients:    make(map[net.Conn]struct{}),
 	}
 }
 
@@ -49,6 +50,7 @@ func (s *Server) Start() error {
 			if err != nil {
 				log.Fatal(err)
 			}
+			conn.Write([]byte("FOLLOWER\n"))
 			s.handleConn(conn)
 		}()
 	}
@@ -67,10 +69,26 @@ func (s *Server) Start() error {
 func (s *Server) handleConn(conn net.Conn) {
 	defer func() {
 		conn.Close()
+		s.removeConn(conn)
 	}()
 
 	if s.IsLeader {
-		s.followers[conn] = struct{}{}
+		bufMsg := make([]byte, 2048)
+
+		n, err := conn.Read(bufMsg)
+		if err != nil {
+			log.Printf("Handshake read error: %v", err)
+			return
+		}
+		handshakeMsg := string(bufMsg[:n])
+
+		if strings.TrimSpace(handshakeMsg) == "FOLLOWER" {
+			s.addFollower(conn)
+			log.Println("Follower connected:", conn.RemoteAddr())
+		} else {
+			s.addClient(conn)
+			log.Println("Client connected:", conn.RemoteAddr())
+		}
 	}
 
 	fmt.Println("Connection made : ", conn.RemoteAddr())
@@ -99,12 +117,13 @@ func (s *Server) handleCommand(conn net.Conn, rawCmd []byte) {
 	}
 
 	log.Printf("Recieved Command %s", msg.Cmd)
-
 	switch msg.Cmd {
 	case CMDSet:
 		err = s.handleSetCommand(conn, msg)
 	case CMDGet:
 		err = s.handleGetCommand(conn, msg)
+	case CMDDelete:
+		err = s.handleDeleteCommand(conn, msg)
 	}
 
 	if err != nil {
@@ -116,6 +135,7 @@ func (s *Server) handleCommand(conn net.Conn, rawCmd []byte) {
 
 func (s *Server) handleSetCommand(conn net.Conn, msg *Message) error {
 	if err := s.cache.Set(msg.Key, msg.Value, msg.TTL); err != nil {
+		conn.Write([]byte(fmt.Sprintf("Error setting key: %v", err)))
 		return err
 	}
 
@@ -127,10 +147,27 @@ func (s *Server) handleSetCommand(conn net.Conn, msg *Message) error {
 func (s *Server) handleGetCommand(conn net.Conn, msg *Message) error {
 	val, err := s.cache.Get(msg.Key)
 	if err != nil {
+		conn.Write([]byte(fmt.Sprintf("Error getting key: %v", err)))
+		return err
+	}
+	log.Println("Got Value: ", string(val))
+	_, err = conn.Write(val)
+	if err != nil {
+		log.Printf("Error writing value to client: %v", err)
+		return err
+	}
+	return nil
+}
+
+func (s *Server) handleDeleteCommand(conn net.Conn, msg *Message) error {
+	err := s.cache.Delete(msg.Key)
+	if err != nil {
+		conn.Write([]byte(fmt.Sprintf("Error deleting key: %v", err)))
 		return err
 	}
 
-	_, err = conn.Write(val)
+	_, err = conn.Write([]byte(fmt.Sprintf("Deleted %s", msg.Key)))
+	go s.sendToFollowers(context.TODO(), msg)
 
 	return nil
 }
@@ -151,7 +188,7 @@ func (s *Server) sendToFollowers(ctx context.Context, msg *Message) error {
 
 func parseCommand(raw []byte) (*Message, error) {
 	var (
-		rawStr = string(raw)
+		rawStr = strings.TrimSpace(string(raw))
 		parts  = strings.Split(rawStr, " ")
 	)
 
@@ -182,4 +219,17 @@ func parseCommand(raw []byte) (*Message, error) {
 	}
 
 	return msg, nil
+}
+
+func (s *Server) addFollower(conn net.Conn) {
+	s.followers[conn] = struct{}{}
+}
+
+func (s *Server) addClient(conn net.Conn) {
+	s.clients[conn] = struct{}{}
+}
+
+func (s *Server) removeConn(conn net.Conn) {
+	delete(s.followers, conn)
+	delete(s.clients, conn)
 }

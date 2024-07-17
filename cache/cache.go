@@ -58,9 +58,24 @@ func (c *Cache) Set(key, value []byte, ttl time.Duration) error {
 	log.Printf("SET %s to %s \n", string(key), string(value))
 
 	go func() {
-		<-time.After(ttl)
+		<-time.After(ttl * time.Second)
 		delete(c.data, string(key))
 	}()
 
 	return nil
+}
+
+func (c *Cache) Print() {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+
+	if len(c.data) == 0 {
+		fmt.Println("Cache is empty")
+		return
+	}
+
+	fmt.Println("Cache contents:")
+	for key, value := range c.data {
+		fmt.Printf("Key: %s, Value: %s\n", key, value)
+	}
 }

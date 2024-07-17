@@ -7,4 +7,5 @@ type Cacher interface {
 	Has([]byte) bool
 	Get([]byte) ([]byte, error)
 	Delete([]byte) error
+	Print()
 }
