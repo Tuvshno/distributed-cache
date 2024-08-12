@@ -20,3 +20,9 @@ Working on this distributed cache system provided me with invaluable experience 
 
 ## Conclusion
 Working on this project allowed me to dive deep into the intricacies of distributed systems, especially around the challenges of caching, maintaining data consistency, and optimizing performance. The experience reinforced my interest in building robust, scalable backend solutions and tackling complex engineering problems. As I continue to explore these areas, I look forward to applying what I've learned to future projects and evolving my understanding of distributed architectures and system design.
+
+## Future Improvements
+During this project, I was introduced to the Raft consensus algorithm, which is crucial for achieving consensus in distributed systems. Initially, I was implementing a follower-leader pattern while ignorant to the Raft Consensus Algorithm. After I had discovered it, I decided that I wanted to continue with my original implementation and save it for another project. 
+
+I am currently implementing Raft from scratch as my next deep dive into distributed system design. You can follow my progress on this [Raft consensus project](https://github.com/Tuvshno/Raft-Go).
+
